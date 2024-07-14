@@ -185,6 +185,31 @@ async def post(
 
     return atleta_out
 
+@router.get(
+    '/', 
+    summary='Consultar todos os Atletas',
+    status_code=status.HTTP_200_OK,
+    response_model=list[AtletaOut],
+)
+async def query(
+    db_session: DatabaseDependency,
+    nome: str = Query(None, description="Filtrar por nome do atleta"),
+    cpf: str = Query(None, description="Filtrar por CPF do atleta")
+) -> list[AtletaOut]:
+    # Montar a query base
+    query = select(AtletaModel)
+
+    # Aplicar filtros se fornecidos
+    if nome:
+        query = query.filter(AtletaModel.nome.ilike(f"%{nome}%"))
+    
+    if cpf:
+        query = query.filter(AtletaModel.cpf == cpf)
+
+    # Executar a query
+    atletas: list[AtletaOut] = (await db_session.execute(query)).scalars().all()
+    
+    return [AtletaOut.model_validate(atleta) for atleta in atletas]
 
 @router.get(
     '/', 
