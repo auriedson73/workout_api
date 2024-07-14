@@ -20,6 +20,18 @@ class Atleta(BaseSchema):
 class AtletaIn(Atleta):
     pass
 
+class AtletaOut(BaseModel):
+    nome: str
+    centro_treinamento: str
+    categoria: str
+
+    @classmethod
+    def model_validate(cls, atleta):
+        return cls(
+            nome=atleta.nome,
+            centro_treinamento=atleta.centro_treinamento.nome,
+            categoria=atleta.categoria.nome
+        )
 
 class AtletaOut(Atleta, OutMixin):
     pass
