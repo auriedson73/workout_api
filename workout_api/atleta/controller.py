@@ -1,7 +1,8 @@
 from datetime import datetime
 from uuid import uuid4
-from fastapi import APIRouter, Body, HTTPException, status
-from pydantic import UUID4
+from fastapi import APIRouter, Body, HTTPException, status, Query
+from pydantic import UUID4, BaseModel
+from fastapi_pagination import PaginationParams, Page
 
 from workout_api.atleta.schemas import AtletaIn, AtletaOut, AtletaUpdate
 from workout_api.atleta.models import AtletaModel
@@ -125,6 +126,7 @@ from datetime import datetime
 from uuid import uuid4
 from fastapi import APIRouter, Body, HTTPException, status
 from pydantic import UUID4
+from fastapi_pagination import PaginationParams, Page
 
 from workout_api.atleta.schemas import AtletaIn, AtletaOut, AtletaUpdate
 from workout_api.atleta.models import AtletaModel
@@ -133,6 +135,7 @@ from workout_api.centro_treinamento.models import CentroTreinamentoModel
 
 from workout_api.contrib.dependencies import DatabaseDependency
 from sqlalchemy.future import select
+
 
 router = APIRouter()
 
@@ -196,20 +199,31 @@ async def query(
     nome: str = Query(None, description="Filtrar por nome do atleta"),
     cpf: str = Query(None, description="Filtrar por CPF do atleta")
 ) -> list[AtletaOut]:
-    # Montar a query base
     query = select(AtletaModel)
 
-    # Aplicar filtros se fornecidos
     if nome:
         query = query.filter(AtletaModel.nome.ilike(f"%{nome}%"))
     
     if cpf:
         query = query.filter(AtletaModel.cpf == cpf)
 
-    # Executar a query
     atletas: list[AtletaOut] = (await db_session.execute(query)).scalars().all()
     
     return [AtletaOut.model_validate(atleta) for atleta in atletas]
+
+@app.exception_handler(IntegrityError)
+async def integrity_error_handler(request, exc):
+
+    if "cpf" in str(exc):
+        cpf = str(exc.orig.diag.constraint_name.split('_')[-1])
+        mensagem = f"Já existe um atleta cadastrado com o cpf: {cpf}"
+    else:
+        mensagem = "Erro de integridade nos dados"
+
+    raise HTTPException(
+        status_code=status.HTTP_303_SEE_OTHER, 
+        detail=mensagem
+    )
 
 @router.get(
     '/', 
@@ -307,3 +321,18 @@ async def delete(id: UUID4, db_session: DatabaseDependency) -> None:
     
     await db_session.delete(atleta)
     await db_session.commit()
+
+@router.get(
+    '/paginacao/', 
+    summary='Consultar todos os Atletas com Paginação',
+    status_code=status.HTTP_200_OK,
+    response_model=Page[AtletaOut],
+)
+async def query_paginada(
+    db_session: DatabaseDependency,
+    pagination: PaginationParams = PaginationParams()
+) -> Page[AtletaOut]:
+    query = select(AtletaModel)
+    atletas = (await db_session.execute(query)).scalars().all()
+
+    return paginate(atletas, pagination)
